@@ -1,5 +1,7 @@
 #pragma once
 
+// Simple unbalanced binary tree
+
 namespace Intrusive
 {
 
@@ -15,21 +17,8 @@ protected:
 public:
 	BinaryTreeObject() : _left(0), _right(0), _next(0) {}
 
-	BinaryTreeObject* next()
-	{
-		BinaryTreeObject *obj;
-		if (_left) for (obj = _left; obj->_right; obj = obj->_right);
-		else for (BinaryTreeObject *prev = this; (obj = prev->_next) && obj->_left == prev; prev = obj);
-		return obj;
-	}
-
-	BinaryTreeObject* prev()
-	{
-		BinaryTreeObject *obj;
-		if (_right) for (obj = _right; obj->_left; obj = obj->_left);
-		else for (BinaryTreeObject *prev = this; (obj = prev->_next) && obj->_right == prev; prev = obj);
-		return obj;
-	}
+	BinaryTreeObject* next();
+	BinaryTreeObject* prev();
 };
 
 template <typename Key, typename Type, typename Less>
@@ -41,81 +30,140 @@ protected:
 public:
 	BinaryTree(Less less = Less()) : _tree(0), _less(less) {}
 
-	void insert(Type *obj)
-	{
-		BinaryTreeObject *root(0), **nodePtr(&_tree);
-		for (; *nodePtr;)
-		{
-			root = *nodePtr;
-			if (_less(obj, static_cast<Type*>(root))) nodePtr = &(root->_right);
-			else nodePtr = &(root->_left);
-		}
-		*nodePtr = obj;
-		obj->_next = root;
-		obj->_left = obj->_right = 0;
-	}
+	// return true if BinaryTree is empty
+	bool empty() { return !_tree; }
 
-	Type* find(const Key &key)
+	// find the item equal to Key or Null if not found
+	Type* find(const Key &key);
+
+	// find closest item as defined by template Min: Type* = Min(Key, Type*, Type*)
+	template <typename Min>
+	Type* findClosest(const Key &key, const Min &min);
+
+	// always inserts - dupliates ok
+	void insert(Type *item);
+
+	// remove item from tree
+	void remove(Type *item);
+
+	BinaryTreeObject* begin();
+	BinaryTreeObject* end() { return 0; }
+};
+
+inline
+BinaryTreeObject* BinaryTreeObject::next()
+{
+	BinaryTreeObject *obj;
+	if (_left) for (obj = _left; obj->_right; obj = obj->_right);
+	else for (BinaryTreeObject *prev = this; (obj = prev->_next) && obj->_left == prev; prev = obj);
+	return obj;
+}
+
+inline
+BinaryTreeObject* BinaryTreeObject::prev()
+{
+	BinaryTreeObject *obj;
+	if (_right) for (obj = _right; obj->_left; obj = obj->_left);
+	else for (BinaryTreeObject *prev = this; (obj = prev->_next) && obj->_right == prev; prev = obj);
+	return obj;
+}
+
+template <typename Key, typename Type, typename Less>
+Type* BinaryTree<Key, Type, Less>::find(const Key &key)
+{
+	BinaryTreeObject *obj(_tree);
+	for (; obj;)
 	{
-		BinaryTreeObject *obj = _tree;
-		for (; obj;)
+		if (_less(key, static_cast<Type*>(obj))) obj = obj->_right;
+		else if (_less(static_cast<Type*>(obj), key)) obj = obj->_left;
+		else break;
+	}
+	return static_cast<Type*>(obj);
+}
+
+template <typename Key, typename Type, typename Less>
+template <typename Min>
+Type* BinaryTree<Key, Type, Less>::findClosest(const Key &key, const Min &min)
+{
+	BinaryTreeObject *maxLess(0), *minMore(0);
+	BinaryTreeObject *obj(_tree);
+	if (obj) for (;;)
+	{
+		Type *node = static_cast<Type*>(obj);
+		if (_less(key, node))
 		{
-			if (_less(key, static_cast<Type*>(obj))) obj = obj->_right;
-			else if (_less(static_cast<Type*>(obj), key)) obj = obj->_left;
-			else break;
+			minMore = obj;
+			if (!(obj = obj->_right))
+			{
+				obj = (maxLess = minMore->prev()) ? min(key, static_cast<Type*>(maxLess), static_cast<Type*>(minMore)) : minMore;
+				break;
+			}
 		}
+		else if (_less(node, key))
+		{
+			maxLess = obj;
+			if (!(obj = obj->_left))
+			{
+				obj = (minMore = maxLess->next()) ? min(key, static_cast<Type*>(maxLess), static_cast<Type*>(minMore)) : maxLess;
+				break;
+			}
+		}
+		else break;
 		return static_cast<Type*>(obj);
 	}
+}
 
-	void find(const Key &min, const Key &max)
+template <typename Key, typename Type, typename Less>
+void BinaryTree<Key, Type, Less>::insert(Type *node)
+{
+	BinaryTreeObject *next(0), **objPtr(&_tree);
+	for (; *objPtr;)
 	{
-		for (node = _tree; node->_right; node = node->_right);
+		next = *objPtr;
+		if (_less(node, static_cast<Type*>(next))) objPtr = &(next->_right);
+		else objPtr = &(next->_left);
+	}
+	*objPtr = node;
+	BinaryTreeObject *obj(node);
+	obj->_next = next;
+	obj->_left = obj->_right = 0;
+}
+
+template <typename Key, typename Type, typename Less>
+void BinaryTree<Key, Type, Less>::remove(Type *node)
+{
+	BinaryTreeObject *removedObj(node);
+	BinaryTreeObject *obj(removedObj->_left);
+	if (removedObj->_right)
+	{
+		obj = removedObj->_right;
+		BinaryTreeObject *leftObj(obj);
+		for (; leftObj->_left; leftObj = leftObj->_left);
+		
+		BinaryTreeObject *left(removedObj->_left);
+		if ((leftObj->_left = left)) left->_next = leftObj;
 	}
 
-	BinaryTreeObject* begin()
+	BinaryTreeObject *next(removedObj->_next);
+	if (obj) obj->_next = next;
+	if (next)
 	{
-		BinaryTreeObject *node;
-		for (node = _tree; node->_right; node = node->_right);
-		return node;
+		if (next->_right == removedObj) next->_right = obj;
+		else next->_left = obj;
 	}
-
-	BinaryTreeObject* end()
+	else
 	{
-		return 0;
+		_tree = obj;
 	}
+	removedObj->_next = removedObj->_left = removedObj->_right = 0;
+}
 
-	class iterator
-	{
-	protected:
-		BinaryTreeObject *_node;
-		iterator(BinaryTreeObject *node) : _node(node) {}
-		friend class BinaryTree<Key, Type, Less>;
-	public:
-		iterator(const iterator &itr) : _node(itr._node) {}
-		bool operator != (const iterator &itr) { return _node != itr._node; }
-		Type* operator * () { return static_cast<Type*>(_node); }
-		iterator& operator ++ ()
-		{
-			if (_node)
-			{
-				if (_node->_left) for (_node = _node->_left; _node->_right; _node = _node->_right);
-				else for (BinaryTreeObject *prev = _node; (_node = _node->_next) && prev == _node->_left; prev = _node);
-			}
-			return *this;
-		}
-	};
-
-	iterator beginItr()
-	{
-		BinaryTreeObject *node;
-		for (node = _tree; node->_right; node = node->_right);
-		return iterator(node);
-	}
-
-	iterator endItr()
-	{
-		return iterator(0);
-	}
-};
+template <typename Key, typename Type, typename Less>
+BinaryTreeObject* BinaryTree<Key, Type, Less>::begin()
+{
+	BinaryTreeObject *node;
+	for (node = _tree; node->_right; node = node->_right);
+	return node;
+}
 
 } // namespace Intrusive
